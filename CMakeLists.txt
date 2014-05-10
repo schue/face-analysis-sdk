@@ -14,7 +14,7 @@ endif()
 OPTION(WITH_GUI "Build the GUI" OFF)
 
 # Third party libraries
-find_package(OpenCV REQUIRED core highgui imgproc objdetect
+find_package(OpenCV REQUIRED core highgui imgproc objdetect ml
   PATHS ${OpenCV_PREFIX}/lib/cmake/
         ${OpenCV_PREFIX}/share/OpenCV/
   NO_DEFAULT_PATH) # For some reason CMake uses its defaults before the above paths.
@@ -69,6 +69,7 @@ ADD_SUBDIRECTORY(src/utils)
 ADD_SUBDIRECTORY(src/tracker)
 ADD_SUBDIRECTORY(src/avatar)
 ADD_SUBDIRECTORY(src/face-fit)
+ADD_SUBDIRECTORY(src/emotion-detect)
 ADD_SUBDIRECTORY(src/test)
 ADD_SUBDIRECTORY(src/scripts)
 ADD_SUBDIRECTORY(src/map-list)
