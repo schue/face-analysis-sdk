@@ -16,6 +16,10 @@
 // most directory of the source code.
 
 // Copyright CSIRO 2013
+//
+// Facial emotion detection
+// Copyright Yuzhong Wen<supermartian@gmail.com> 2014
+// For educational use only.
 
 #include <iostream>
 #include <fstream>
@@ -33,11 +37,8 @@ using namespace FACETRACKER;
 using namespace std;
 using namespace cv;
 
-const char* ann_xml = "ann.xml";
-const char* csv_file = "label.csv";
-
-/* 23 distances between facial points */
-#define INPUT_SIZE 23
+/* 29 distances between facial points */
+#define INPUT_SIZE 29
 
 /* 7 different expressions */
 #define OUTPUT_SIZE 7
@@ -45,6 +46,27 @@ const char* csv_file = "label.csv";
 float get_distance(Point_<double> a, Point_<double> b);
 void get_euler_distance_sets(vector<Point_<double> >& points, vector<double>& distances);
 int get_facial_points(Mat& face, vector<Point_<double> >& points);
+String get_emotion(int e);
+int classify_emotion(Mat& face, const char* ann_file, int tagonimg = 0);
+
+void
+print_usage()
+{
+  std::string text =
+    "Usage: <running mode> <arguments>\n"
+    "\n"
+    "Trainning mode:\n"
+    "$emotion-detect t <path-to-ann-file> <path-to-trainning-label-csv-file>"
+    "\n"
+    "Image mode:\n"
+    "$emotion-detect f <path-to-image> <path-to-ann-file>"
+    "\n"
+    "Webcam mode:\n"
+    "$emotion-detect c <path-to-ann-file>"
+    "\n";
+
+    std::cout << text << std::endl;
+}
 
 void read_training_data_from_csv(String csvfile, Mat& data, Mat& label, char separator=';')
 {
@@ -103,7 +125,7 @@ void train_ann(String csv, String ann_file)
                                  CvANN_MLP_TrainParams::BACKPROP,
                                  0.1, 0.1);
 
-    Mat data(400, 23, CV_64FC1), label(400, 7, CV_64FC1);
+    Mat data(400, INPUT_SIZE, CV_64FC1), label(400, OUTPUT_SIZE, CV_64FC1);
     read_training_data_from_csv(csv, data, label);
     nnetwork.train(data, label,cv::Mat(),cv::Mat(),params);
 
@@ -114,6 +136,32 @@ void train_ann(String csv, String ann_file)
 float get_distance(Point_<double> a, Point_<double> b)
 {
     return sqrt(((a.x - b.x) * (a.x - b.x)) + (a.y - b.y) * (a.y - b.y));
+}
+
+int detectFaces(Mat frame, vector<Rect>& output, const char* cascade)
+{
+    std::vector<Rect> faces;
+    Rect face;
+    CascadeClassifier face_cascade;
+    face_cascade.load(String(cascade));
+
+    face_cascade.detectMultiScale(frame, faces, 1.7, 3, 0|CV_HAAR_SCALE_IMAGE , Size(20, 20));
+
+    if (faces.size() <= 0) {
+        return 0;
+    }
+
+    while (!faces.empty()) {
+        output.push_back(faces.back());
+        output.back().x -= 10;
+        output.back().y -= 10;
+        output.back().width += 10;
+        output.back().height += 10;
+        faces.pop_back();
+    }
+    cout<<String(cascade)<<"\n";
+
+    return 1;
 }
 
 void get_euler_distance_sets(vector<Point_<double> >& points, vector<double>& distances)
@@ -149,6 +197,14 @@ void get_euler_distance_sets(vector<Point_<double> >& points, vector<double>& di
     distances.push_back(get_distance(points[25], points[58]));
     distances.push_back(get_distance(points[25], points[54]));
 
+    distances.push_back(get_distance(points[31], points[17]));
+    distances.push_back(get_distance(points[31], points[19]));
+    distances.push_back(get_distance(points[31], points[21]));
+
+    distances.push_back(get_distance(points[25], points[22]));
+    distances.push_back(get_distance(points[25], points[24]));
+    distances.push_back(get_distance(points[25], points[26]));
+
     distances.push_back(get_distance(points[58], points[51]));
 }
 
@@ -178,7 +234,7 @@ int get_facial_points(Mat& face, vector<Point_<double> >& points)
     return 1;
 }
 
-int classify_emotion(Mat face, const char* ann_file)
+int classify_emotion(Mat& face, const char* ann_file, int tagonimg)
 {
     int ret = 0;
     Mat output(1, OUTPUT_SIZE, CV_64FC1);
@@ -189,10 +245,10 @@ int classify_emotion(Mat face, const char* ann_file)
     vector<Point_<double> > points;
     vector<double> distances;
     if(!get_facial_points(face, points)) {
+        cout<<"noooooooo";
         return -1;
     }
 
-    imshow("face", face);
     get_euler_distance_sets(points, distances);
     int j = 0;
     while(!distances.empty()) {
@@ -212,7 +268,11 @@ int classify_emotion(Mat face, const char* ann_file)
             k = j;
         }
     }
-    cout<<"\n";
+
+    if (tagonimg) {
+        putText(face, get_emotion(k), Point(30, 30), FONT_HERSHEY_SIMPLEX,
+                0.7, Scalar(0, 255, 0), 2);
+    }
 
     return k;
 }
@@ -246,31 +306,34 @@ String get_emotion(int e)
 int main(int argc, char* argv[])
 {
     Mat frame; 
+    if (argc < 2) {
+        print_usage();
+        return 0;
+    }
+
     if (argv[1][0] == 't') {
-        train_ann(csv_file, ann_xml);
+        train_ann(argv[2], argv[3]);
         return 0;
     } else if (argv[1][0] == 'f') {
         int ret;
-        ret = classify_emotion(imread(argv[2], 1), ann_xml);
+        frame = imread(argv[2], 1);
+        ret = classify_emotion(frame, argv[3], 1);
         cout << get_emotion(ret) << "\n";
+        imshow("face", frame);
     } else if (argv[1][0] == 'c') {
         CvCapture* capture;
+        capture = cvCaptureFromCAM(0);
 
-        capture = cvCaptureFromCAM( 0 );
-        if(capture) {
+        if (capture) {
             while(true) {
                 frame = cvQueryFrame(capture);
                 if(!frame.empty()) {
                     int ret;
-                    ret = classify_emotion(frame, "./ann.xml");
+                    ret = classify_emotion(frame, argv[2], 1);
                     cout << get_emotion(ret) << "\n";
+                    imshow("face", frame);
                 } else {
                     printf(" --(!) No captured frame -- Break!");
-                    break;
-                }
-
-                int c = waitKey(10);
-                if((char)c == 'c') {
                     break;
                 }
             }
