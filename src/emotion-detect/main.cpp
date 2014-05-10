@@ -43,14 +43,16 @@ using namespace cv;
 /* 7 different expressions */
 #define OUTPUT_SIZE 7
 
+void print_usage();
+void read_training_data_from_csv(String csvfile, Mat& data, Mat& label, char separator=';');
+void train_ann(String csv, String ann_file);
 float get_distance(Point_<double> a, Point_<double> b);
 void get_euler_distance_sets(vector<Point_<double> >& points, vector<double>& distances);
 int get_facial_points(Mat& face, vector<Point_<double> >& points);
-String get_emotion(int e);
 int classify_emotion(Mat& face, const char* ann_file, int tagonimg = 0);
+String get_emotion(int e);
 
-void
-print_usage()
+void print_usage()
 {
   std::string text =
     "Usage: <running mode> <arguments>\n"
@@ -68,7 +70,14 @@ print_usage()
     std::cout << text << std::endl;
 }
 
-void read_training_data_from_csv(String csvfile, Mat& data, Mat& label, char separator=';')
+/*
+ * Each line of the trainning data is like:
+ *  <path-to-image>; <emotion label>
+ *
+ * The emotions are tagged in the following way:
+ * 1=anger, 2=contempt, 3=disgust, 4=fear, 5=happy, 6=sadness, 7=surprise
+ * */
+void read_training_data_from_csv(String csvfile, Mat& data, Mat& label, char separator)
 {
     std::ifstream file(csvfile.c_str(), ifstream::in);
     if (!file) {
@@ -113,6 +122,9 @@ void read_training_data_from_csv(String csvfile, Mat& data, Mat& label, char sep
     label.resize(i);
 }
 
+/*
+ * Train the ANN with 29 different distances of points on the face.
+ * */
 void train_ann(String csv, String ann_file)
 {
     Mat layers(3,1,CV_32S);
@@ -129,8 +141,9 @@ void train_ann(String csv, String ann_file)
     read_training_data_from_csv(csv, data, label);
     nnetwork.train(data, label,cv::Mat(),cv::Mat(),params);
 
-    FileStorage fs(ann_file, cv::FileStorage::WRITE); // or xml
-    nnetwork.write(*fs, "facial_ann"); // don't think too much about the deref, it casts to a FileNode
+    /* Save the trainning result to file. */
+    FileStorage fs(ann_file, cv::FileStorage::WRITE);
+    nnetwork.write(*fs, "facial_ann");
 }
 
 float get_distance(Point_<double> a, Point_<double> b)
@@ -138,32 +151,10 @@ float get_distance(Point_<double> a, Point_<double> b)
     return sqrt(((a.x - b.x) * (a.x - b.x)) + (a.y - b.y) * (a.y - b.y));
 }
 
-int detectFaces(Mat frame, vector<Rect>& output, const char* cascade)
-{
-    std::vector<Rect> faces;
-    Rect face;
-    CascadeClassifier face_cascade;
-    face_cascade.load(String(cascade));
-
-    face_cascade.detectMultiScale(frame, faces, 1.7, 3, 0|CV_HAAR_SCALE_IMAGE , Size(20, 20));
-
-    if (faces.size() <= 0) {
-        return 0;
-    }
-
-    while (!faces.empty()) {
-        output.push_back(faces.back());
-        output.back().x -= 10;
-        output.back().y -= 10;
-        output.back().width += 10;
-        output.back().height += 10;
-        faces.pop_back();
-    }
-    cout<<String(cascade)<<"\n";
-
-    return 1;
-}
-
+/*
+ * Get the euler distances from 16 different facial feature points.
+ *
+ * */
 void get_euler_distance_sets(vector<Point_<double> >& points, vector<double>& distances)
 {
     distances.push_back(get_distance(points[17], points[41]));
@@ -259,6 +250,7 @@ int classify_emotion(Mat& face, const char* ann_file, int tagonimg)
 
     nnetwork.predict(data, output);
 
+    /* Find the biggest value in the output vector, that is what we want. */
     double b = 0;
     int k = 0;
     for (j = 0; j < 7; j++) {
@@ -269,6 +261,7 @@ int classify_emotion(Mat& face, const char* ann_file, int tagonimg)
         }
     }
 
+    /* Print the result on the image. */
     if (tagonimg) {
         putText(face, get_emotion(k), Point(30, 30), FONT_HERSHEY_SIMPLEX,
                 0.7, Scalar(0, 255, 0), 2);
@@ -312,15 +305,18 @@ int main(int argc, char* argv[])
     }
 
     if (argv[1][0] == 't') {
+        /* Trainning mode. */
         train_ann(argv[2], argv[3]);
         return 0;
     } else if (argv[1][0] == 'f') {
+        /* Image mode. */
         int ret;
         frame = imread(argv[2], 1);
         ret = classify_emotion(frame, argv[3], 1);
         cout << get_emotion(ret) << "\n";
         imshow("face", frame);
     } else if (argv[1][0] == 'c') {
+        /* Webcam mode. */
         CvCapture* capture;
         capture = cvCaptureFromCAM(0);
 
@@ -346,5 +342,6 @@ int main(int argc, char* argv[])
             break;
         }
     }
+
     return 0;
 }
