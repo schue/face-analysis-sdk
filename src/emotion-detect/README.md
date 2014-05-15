@@ -29,7 +29,7 @@ The executable binary will be in {SDK-BASE-DIR}/bin.
 
 ### Implementation
 
-The idea was mostly based on "Automatic Facial Expression Recognition System Based on Geometric and Appearance Features" written by Aliaa A. A. Youssif & Wesam A. A. Asker. Using the AAM in face-analysis-sdk to get 16 facial points from the face image, then calculate the euler distance of these points and use them as the input of the neural network.
+The idea was mostly based on "Automatic Facial Expression Recognition System Based on Geometric and Appearance Features" written by Aliaa A. A. Youssif & Wesam A. A. Asker. Use the AAM in face-analysis-sdk to get 21 facial points from the face image, then calculate the euler distance of these points pairs and use them as the input of the neural network.
 
 3 points on each eyebrow, 4 points on each eye, 3 points on the nose, 4 points on the mouth.
 
