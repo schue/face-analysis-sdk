@@ -37,9 +37,6 @@ using namespace FACETRACKER;
 using namespace std;
 using namespace cv;
 
-/* 29 distances between facial points */
-#define INPUT_SIZE 29
-
 /* 7 different expressions */
 #define OUTPUT_SIZE 7
 
@@ -52,6 +49,22 @@ int get_facial_points(Mat& face, vector<Point_<double> >& points);
 int classify_emotion(Mat& face, const char* ann_file, int tagonimg = 0);
 String get_emotion(int e);
 
+/* 34 distances between facial points */
+const int input_points_array[] = {
+    17,37,19,37,21,37,17,27,
+    21,27,22,27,26,27,22,43,
+    24,43,26,43,36,37,37,39,
+    36,41,39,41,39,27,27,42,
+    42,43,43,45,42,47,45,47,
+    27,31,27,35,31,51,35,51,
+    48,51,54,51,48,57,54,57,
+    36,31,45,35,48,54,51,57,
+    31,48,35,54,36,48,45,54
+};
+
+const int points_array_size = sizeof(input_points_array) / sizeof(int); 
+const int nn_input_size = points_array_size / 2;
+
 void print_usage()
 {
   std::string text =
@@ -61,7 +74,7 @@ void print_usage()
     "$emotion-detect t <path-to-ann-file> <path-to-trainning-label-csv-file>"
     "\n"
     "Image mode:\n"
-    "$emotion-detect f <path-to-image> <path-to-ann-file>"
+    "$emotion-detect f <path-to-ann-file> <path-to-image>"
     "\n"
     "Webcam mode:\n"
     "$emotion-detect c <path-to-ann-file>"
@@ -108,7 +121,7 @@ void read_training_data_from_csv(String csvfile, Mat& data, Mat& label, char sep
             }
 
             for (j = 0; j < 7; j++) {
-                if (j == atoi(classlabel.c_str()))
+                if (j == atoi(classlabel.c_str()) - 1)
                     label.at<double>(i, j) = 1;
                 else
                     label.at<double>(i, j) = 0;
@@ -128,16 +141,16 @@ void read_training_data_from_csv(String csvfile, Mat& data, Mat& label, char sep
 void train_ann(String csv, String ann_file)
 {
     Mat layers(3,1,CV_32S);
-    layers.at<int>(0,0) = INPUT_SIZE; //input layer
-    layers.at<int>(1,0) = 40; //hidden layer
+    layers.at<int>(0,0) = nn_input_size; //input layer
+    layers.at<int>(1,0) = 35; //hidden layer
     layers.at<int>(2,0) = OUTPUT_SIZE; //output layer
 
-    CvANN_MLP nnetwork(layers, CvANN_MLP::SIGMOID_SYM,0.6,1);
+    CvANN_MLP nnetwork(layers, CvANN_MLP::SIGMOID_SYM,0.7,1);
     CvANN_MLP_TrainParams params(cvTermCriteria(CV_TERMCRIT_ITER+CV_TERMCRIT_EPS, 1000, 0.000001),
                                  CvANN_MLP_TrainParams::BACKPROP,
                                  0.1, 0.1);
 
-    Mat data(400, INPUT_SIZE, CV_64FC1), label(400, OUTPUT_SIZE, CV_64FC1);
+    Mat data(400, nn_input_size, CV_64FC1), label(400, OUTPUT_SIZE, CV_64FC1);
     read_training_data_from_csv(csv, data, label);
     nnetwork.train(data, label,cv::Mat(),cv::Mat(),params);
 
@@ -157,46 +170,29 @@ float get_distance(Point_<double> a, Point_<double> b)
  * */
 void get_euler_distance_sets(vector<Point_<double> >& points, vector<double>& distances)
 {
-    distances.push_back(get_distance(points[17], points[41]));
-    distances.push_back(get_distance(points[19], points[41]));
-    distances.push_back(get_distance(points[21], points[41]));
+    for (int i = 0; i < points_array_size; i += 2) {
+        distances.push_back(get_distance(points[input_points_array[i]],
+                                         points[input_points_array[i + 1]]));
+    }
+}
 
-    distances.push_back(get_distance(points[22], points[42]));
-    distances.push_back(get_distance(points[24], points[42]));
-    distances.push_back(get_distance(points[26], points[42]));
+void draw_points(Mat& face, vector<Point_<double> >& points)
+{
+    for (int i = 0; i < points.size(); i ++) {
+        putText(face, to_string(i), points[i],
+                   FONT_HERSHEY_SIMPLEX,
+                   0.5,
+                   Scalar(212, 43, 128));
+    }
+}
 
-    distances.push_back(get_distance(points[36], points[41]));
-    distances.push_back(get_distance(points[36], points[31]));
-    distances.push_back(get_distance(points[41], points[31]));
-
-    distances.push_back(get_distance(points[42], points[45]));
-    distances.push_back(get_distance(points[42], points[25]));
-    distances.push_back(get_distance(points[45], points[25]));
-
-    distances.push_back(get_distance(points[31], points[51]));
-    distances.push_back(get_distance(points[25], points[51]));
-
-    distances.push_back(get_distance(points[41], points[51]));
-    distances.push_back(get_distance(points[51], points[54]));
-
-    distances.push_back(get_distance(points[41], points[58]));
-    distances.push_back(get_distance(points[58], points[54]));
-
-    distances.push_back(get_distance(points[31], points[41]));
-    distances.push_back(get_distance(points[58], points[31]));
-
-    distances.push_back(get_distance(points[25], points[58]));
-    distances.push_back(get_distance(points[25], points[54]));
-
-    distances.push_back(get_distance(points[31], points[17]));
-    distances.push_back(get_distance(points[31], points[19]));
-    distances.push_back(get_distance(points[31], points[21]));
-
-    distances.push_back(get_distance(points[25], points[22]));
-    distances.push_back(get_distance(points[25], points[24]));
-    distances.push_back(get_distance(points[25], points[26]));
-
-    distances.push_back(get_distance(points[58], points[51]));
+void draw_distance(Mat& face, vector<Point_<double> >& points)
+{
+    for (int i = 0; i < points_array_size; i += 2) {
+        line(face, points[input_points_array[i]],
+                   points[input_points_array[i + 1]],
+                   Scalar(12, 43, 128), 2);
+    }
 }
 
 int get_facial_points(Mat& face, vector<Point_<double> >& points)
@@ -229,14 +225,13 @@ int classify_emotion(Mat& face, const char* ann_file, int tagonimg)
 {
     int ret = 0;
     Mat output(1, OUTPUT_SIZE, CV_64FC1);
-    Mat data(1, INPUT_SIZE, CV_64FC1);
+    Mat data(1, nn_input_size, CV_64FC1);
     CvANN_MLP nnetwork;
     nnetwork.load(ann_file, "facial_ann");
 
     vector<Point_<double> > points;
     vector<double> distances;
     if(!get_facial_points(face, points)) {
-        cout<<"noooooooo";
         return -1;
     }
 
@@ -252,12 +247,12 @@ int classify_emotion(Mat& face, const char* ann_file, int tagonimg)
 
     /* Find the biggest value in the output vector, that is what we want. */
     double b = 0;
-    int k = 0;
-    for (j = 0; j < 7; j++) {
+    int k = 1;
+    for (j = 0; j < OUTPUT_SIZE; j++) {
         cout<<output.at<double>(0, j)<<" ";
         if (b < output.at<double>(0, j)) {
             b = output.at<double>(0, j);
-            k = j;
+            k = j + 1;
         }
     }
 
@@ -265,6 +260,7 @@ int classify_emotion(Mat& face, const char* ann_file, int tagonimg)
     if (tagonimg) {
         putText(face, get_emotion(k), Point(30, 30), FONT_HERSHEY_SIMPLEX,
                 0.7, Scalar(0, 255, 0), 2);
+        draw_distance(face, points);
     }
 
     return k;
@@ -299,23 +295,25 @@ String get_emotion(int e)
 int main(int argc, char* argv[])
 {
     Mat frame; 
-    if (argc < 2) {
-        print_usage();
-        return 0;
-    }
 
-    if (argv[1][0] == 't') {
+    if (argc == 4 && argv[1][0] == 't') {
         /* Trainning mode. */
-        train_ann(argv[2], argv[3]);
+        train_ann(argv[3], argv[2]);
         return 0;
-    } else if (argv[1][0] == 'f') {
+    } else if (argc == 4 && argv[1][0] == 'f') {
         /* Image mode. */
         int ret;
-        frame = imread(argv[2], 1);
-        ret = classify_emotion(frame, argv[3], 1);
+        frame = imread(argv[3], 1);
+        ret = classify_emotion(frame, argv[2], 1);
         cout << get_emotion(ret) << "\n";
         imshow("face", frame);
-    } else if (argv[1][0] == 'c') {
+        for (;;) {
+            int c = waitKey(1);
+            if((char)c == 'c') {
+                break;
+            }
+        }
+    } else if (argc == 3 && argv[1][0] == 'c') {
         /* Webcam mode. */
         CvCapture* capture;
         capture = cvCaptureFromCAM(0);
@@ -332,15 +330,14 @@ int main(int argc, char* argv[])
                     printf(" --(!) No captured frame -- Break!");
                     break;
                 }
+                int c = waitKey(1);
+                if((char)c == 'c') {
+                    break;
+                }
             }
         }
-    }
-
-    for(;;) {
-        int c = waitKey(10);
-        if((char)c == 'c') {
-            break;
-        }
+    } else {
+        print_usage();
     }
 
     return 0;
